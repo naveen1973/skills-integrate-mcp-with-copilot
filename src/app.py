@@ -5,6 +5,8 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
+from datetime import date, timedelta
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -24,58 +26,101 @@ activities = {
     "Chess Club": {
         "description": "Learn strategies and compete in chess tournaments",
         "schedule": "Fridays, 3:30 PM - 5:00 PM",
+        "category": "Academic",
+        "meeting_days": [4],
+        "start_time": "15:30",
+        "end_time": "17:00",
         "max_participants": 12,
         "participants": ["michael@mergington.edu", "daniel@mergington.edu"]
     },
     "Programming Class": {
         "description": "Learn programming fundamentals and build software projects",
         "schedule": "Tuesdays and Thursdays, 3:30 PM - 4:30 PM",
+        "category": "Academic",
+        "meeting_days": [1, 3],
+        "start_time": "15:30",
+        "end_time": "16:30",
         "max_participants": 20,
         "participants": ["emma@mergington.edu", "sophia@mergington.edu"]
     },
     "Gym Class": {
         "description": "Physical education and sports activities",
         "schedule": "Mondays, Wednesdays, Fridays, 2:00 PM - 3:00 PM",
+        "category": "Sports",
+        "meeting_days": [0, 2, 4],
+        "start_time": "14:00",
+        "end_time": "15:00",
         "max_participants": 30,
         "participants": ["john@mergington.edu", "olivia@mergington.edu"]
     },
     "Soccer Team": {
         "description": "Join the school soccer team and compete in matches",
         "schedule": "Tuesdays and Thursdays, 4:00 PM - 5:30 PM",
+        "category": "Sports",
+        "meeting_days": [1, 3],
+        "start_time": "16:00",
+        "end_time": "17:30",
         "max_participants": 22,
         "participants": ["liam@mergington.edu", "noah@mergington.edu"]
     },
     "Basketball Team": {
         "description": "Practice and play basketball with the school team",
         "schedule": "Wednesdays and Fridays, 3:30 PM - 5:00 PM",
+        "category": "Sports",
+        "meeting_days": [2, 4],
+        "start_time": "15:30",
+        "end_time": "17:00",
         "max_participants": 15,
         "participants": ["ava@mergington.edu", "mia@mergington.edu"]
     },
     "Art Club": {
         "description": "Explore your creativity through painting and drawing",
         "schedule": "Thursdays, 3:30 PM - 5:00 PM",
+        "category": "Arts",
+        "meeting_days": [3],
+        "start_time": "15:30",
+        "end_time": "17:00",
         "max_participants": 15,
         "participants": ["amelia@mergington.edu", "harper@mergington.edu"]
     },
     "Drama Club": {
         "description": "Act, direct, and produce plays and performances",
         "schedule": "Mondays and Wednesdays, 4:00 PM - 5:30 PM",
+        "category": "Arts",
+        "meeting_days": [0, 2],
+        "start_time": "16:00",
+        "end_time": "17:30",
         "max_participants": 20,
         "participants": ["ella@mergington.edu", "scarlett@mergington.edu"]
     },
     "Math Club": {
         "description": "Solve challenging problems and participate in math competitions",
         "schedule": "Tuesdays, 3:30 PM - 4:30 PM",
+        "category": "Academic",
+        "meeting_days": [1],
+        "start_time": "15:30",
+        "end_time": "16:30",
         "max_participants": 10,
         "participants": ["james@mergington.edu", "benjamin@mergington.edu"]
     },
     "Debate Team": {
         "description": "Develop public speaking and argumentation skills",
         "schedule": "Fridays, 4:00 PM - 5:30 PM",
+        "category": "Community",
+        "meeting_days": [4],
+        "start_time": "16:00",
+        "end_time": "17:30",
         "max_participants": 12,
         "participants": ["charlotte@mergington.edu", "henry@mergington.edu"]
     }
 }
+
+
+def next_session_date(meeting_days: list[int], today: date | None = None) -> str:
+    """Return the next meeting date as an ISO date for calendar sorting."""
+    current_date = today or date.today()
+    days_until_meeting = min((day - current_date.weekday()) % 7 for day in meeting_days)
+    return (current_date + timedelta(days=days_until_meeting)).isoformat()
 
 
 @app.get("/")
@@ -85,7 +130,13 @@ def root():
 
 @app.get("/activities")
 def get_activities():
-    return activities
+    return {
+        name: {
+            **details,
+            "next_session": next_session_date(details["meeting_days"]),
+        }
+        for name, details in activities.items()
+    }
 
 
 @app.post("/activities/{activity_name}/signup")

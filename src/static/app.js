@@ -3,18 +3,129 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const searchInput = document.getElementById("activity-search");
+  const categoryFilter = document.getElementById("category-filter");
+  const sortSelect = document.getElementById("sort-activities");
+  const resultsSummary = document.getElementById("results-summary");
+  let allActivities = {};
+  let currentView = "list";
 
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
       const response = await fetch("/activities");
-      const activities = await response.json();
+      allActivities = await response.json();
+      populateCategories();
+      populateActivitySelect();
+      renderActivities();
+    } catch (error) {
+      activitiesList.innerHTML =
+        "<p>Failed to load activities. Please try again later.</p>";
+      console.error("Error fetching activities:", error);
+    }
+  }
 
-      // Clear loading message
-      activitiesList.innerHTML = "";
+  function populateCategories() {
+    const categories = [...new Set(
+      Object.values(allActivities).map((activity) => activity.category)
+    )].sort();
 
-      // Populate activities list
-      Object.entries(activities).forEach(([name, details]) => {
+    categoryFilter.innerHTML = '<option value="all">All categories</option>';
+    categories.forEach((category) => {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      categoryFilter.appendChild(option);
+    });
+  }
+
+  function populateActivitySelect() {
+    activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+    Object.keys(allActivities).sort().forEach((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      activitySelect.appendChild(option);
+    });
+  }
+
+  function getFilteredActivities() {
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    const selectedCategory = categoryFilter.value;
+
+    return Object.entries(allActivities)
+      .filter(([name, details]) => {
+        const matchesSearch = !searchTerm ||
+          `${name} ${details.description}`.toLowerCase().includes(searchTerm);
+        const matchesCategory = selectedCategory === "all" ||
+          details.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      })
+      .sort(([nameA, detailsA], [nameB, detailsB]) => {
+        if (sortSelect.value === "category") {
+          return detailsA.category.localeCompare(detailsB.category) ||
+            nameA.localeCompare(nameB);
+        }
+        if (sortSelect.value === "date") {
+          return detailsA.next_session.localeCompare(detailsB.next_session) ||
+            nameA.localeCompare(nameB);
+        }
+        return nameA.localeCompare(nameB);
+      });
+  }
+
+  function renderActivities() {
+    const filteredActivities = getFilteredActivities();
+    resultsSummary.textContent = `${filteredActivities.length} of ${
+      Object.keys(allActivities).length
+    } activities shown`;
+    activitiesList.innerHTML = "";
+
+    if (filteredActivities.length === 0) {
+      activitiesList.innerHTML =
+        '<p class="empty-state">No activities match your search and filters.</p>';
+      return;
+    }
+
+    if (currentView === "calendar") {
+      renderCalendarView(filteredActivities);
+    } else {
+      const cards = document.createElement("div");
+      cards.className = "activity-grid";
+      filteredActivities.forEach(([name, details]) => {
+        cards.appendChild(createActivityCard(name, details));
+      });
+      activitiesList.appendChild(cards);
+    }
+
+  }
+
+  function renderCalendarView(filteredActivities) {
+    const groupedByDate = filteredActivities.reduce((groups, [name, details]) => {
+      groups[details.next_session] ??= [];
+      groups[details.next_session].push([name, details]);
+      return groups;
+    }, {});
+
+    Object.entries(groupedByDate).sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+      .forEach(([sessionDate, activitiesForDate]) => {
+        const dateGroup = document.createElement("section");
+        dateGroup.className = "calendar-day";
+        const dateHeading = document.createElement("h4");
+        dateHeading.textContent = new Date(`${sessionDate}T00:00:00`)
+          .toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+        dateGroup.appendChild(dateHeading);
+        const cards = document.createElement("div");
+        cards.className = "activity-grid";
+        activitiesForDate.forEach(([name, details]) => {
+          cards.appendChild(createActivityCard(name, details));
+        });
+        dateGroup.appendChild(cards);
+        activitiesList.appendChild(dateGroup);
+      });
+  }
+
+  function createActivityCard(name, details) {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
@@ -30,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span><button type="button" class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Unregister ${email} from ${name}">❌</button></li>`
                   )
                   .join("")}
               </ul>
@@ -39,37 +150,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
         activityCard.innerHTML = `
           <h4>${name}</h4>
+          <span class="category-tag">${details.category}</span>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
+          <p><strong>Next session:</strong> ${new Date(`${details.next_session}T00:00:00`)
+            .toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
           <div class="participants-container">
             ${participantsHTML}
           </div>
         `;
-
-        activitiesList.appendChild(activityCard);
-
-        // Add option to select dropdown
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        activitySelect.appendChild(option);
-      });
-
-      // Add event listeners to delete buttons
-      document.querySelectorAll(".delete-btn").forEach((button) => {
-        button.addEventListener("click", handleUnregister);
-      });
-    } catch (error) {
-      activitiesList.innerHTML =
-        "<p>Failed to load activities. Please try again later.</p>";
-      console.error("Error fetching activities:", error);
+        return activityCard;
     }
-  }
-
   // Handle unregister functionality
-  async function handleUnregister(event) {
-    const button = event.target;
+  async function handleUnregister(button) {
     const activity = button.getAttribute("data-activity");
     const email = button.getAttribute("data-email");
 
@@ -109,6 +203,13 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error unregistering:", error);
     }
   }
+
+  activitiesList.addEventListener("click", (event) => {
+    const button = event.target.closest(".delete-btn");
+    if (button) {
+      handleUnregister(button);
+    }
+  });
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
@@ -153,6 +254,21 @@ document.addEventListener("DOMContentLoaded", () => {
       messageDiv.classList.remove("hidden");
       console.error("Error signing up:", error);
     }
+  });
+
+  [searchInput, categoryFilter, sortSelect].forEach((control) => {
+    control.addEventListener("input", renderActivities);
+    control.addEventListener("change", renderActivities);
+  });
+
+  document.querySelectorAll(".view-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      currentView = button.dataset.view;
+      document.querySelectorAll(".view-button").forEach((viewButton) => {
+        viewButton.classList.toggle("active", viewButton === button);
+      });
+      renderActivities();
+    });
   });
 
   // Initialize app
